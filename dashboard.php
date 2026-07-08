@@ -1,6 +1,5 @@
 <?php
 ini_set('display_errors', 1);
-ini_set('display_config', 1); // For deep environmental parsing
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 require 'db.php';
@@ -11,152 +10,173 @@ $user_id = $_SESSION['user_id'];
 $mode = $_SESSION['wallet_mode'] ?? 'live';
 $base_currency = $_SESSION['base_currency'] ?? 'USD';
 
-// Optimized query using explicit column selections for execution efficiency
-$stmt = $conn->prepare("SELECT fiat_balance, ari_balance, btc_balance, blockchain_address, solana_address FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
+$stmt = $conn->prepare("SELECT * FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
 $stmt->execute([$user_id, $mode]);
 $wallet = $stmt->fetch();
+
+// Same rate table used across the app - keep consistent everywhere
+$rates = [
+    'USD' => 1.0, 'NGN' => 1500.0, 'GBP' => 0.78, 'EUR' => 0.92,
+    'ARI' => 0.80, 'BTC' => 0.000015, 'ETH' => 0.00028,
+    'SOL' => 0.0068, 'USDC' => 1.00, 'USDT' => 1.00
+];
+
+$fiat_pairs = ['USD', 'NGN', 'GBP', 'EUR'];
+$crypto_pairs = ['BTC', 'ETH', 'SOL', 'USDC', 'USDT'];
 
 include 'sidebar.php';
 ?>
 
-<div class="space-y-8">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-900 pb-6">
+<div class="space-y-6">
+
+    <!-- TOGGLE HEADER -->
+    <div class="flex items-center justify-between border-b border-slate-900 pb-6">
         <div>
-            <h1 class="text-2xl font-extrabold tracking-tight text-white sm:text-3xl bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">Institutional Asset Vault</h1>
-            <p class="text-xs text-slate-400 mt-1">Cross-chain liquidity matrix & smart contract deployment terminal.</p>
+            <h1 class="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Wallet Overview</h1>
+            <p class="text-xs text-slate-400 mt-1">Swipe or tap to switch between fiat and crypto view.</p>
         </div>
-        <div class="flex items-center gap-3">
-            <div id="solana-status" class="flex items-center gap-2 bg-[#14F195]/10 border border-[#14F195]/20 px-3 py-1.5 rounded-xl font-mono text-[10px] text-[#14F195]">
-                <div class="w-1.5 h-1.5 rounded-full bg-[#14F195] animate-pulse"></div>
-                <span id="wallet-status-text">SOLANA MAINNET-BETA</span>
-            </div>
-            <button id="connect-wallet-btn" class="flex items-center gap-2 bg-gradient-to-r from-[#9945FF] to-[#14F195] hover:opacity-90 text-slate-950 font-bold font-mono text-[10px] uppercase tracking-wider px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-[#9945FF]/10">
-                <i data-lucide="wallet" class="w-3.5 h-3.5 stroke-[2.5]"></i>
-                <span id="btn-text">Connect Solana Wallet</span>
-            </button>
+        <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-900 font-mono text-[10px]">
+            <button onclick="switchView('fiat')" id="btn-fiat-view" class="view-btn px-3 py-1.5 rounded-lg text-white bg-slate-900 border border-slate-800 font-bold tracking-tight">FIAT</button>
+            <button onclick="switchView('crypto')" id="btn-crypto-view" class="view-btn px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-300 transition-colors">CRYPTO</button>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-slate-800 transition-all duration-300">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Available Cash Reserves</span>
-                <div class="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center border border-slate-800 text-slate-400"><i data-lucide="banknote" class="w-3.5 h-3.5"></i></div>
+    <!-- ============== FIAT DASHBOARD ============== -->
+    <div id="view-fiat" class="wallet-view space-y-6">
+
+        <!-- Balance card -->
+        <div class="glass-panel p-6 rounded-2xl">
+            <span class="text-[10px] font-mono text-slate-500 uppercase tracking-widest block mb-2">Available Balance</span>
+            <div class="text-4xl font-bold tracking-tight text-white font-mono">
+                <?= number_format($wallet['fiat_balance'] ?? 0.00, 2) ?>
+                <span class="text-sm font-sans text-slate-500 font-normal"><?= $base_currency ?></span>
             </div>
-            <div class="text-3xl font-bold tracking-tight text-white font-mono"><?= number_format($wallet['fiat_balance'] ?? 0.00, 2) ?> <span class="text-xs font-sans text-slate-500 font-normal"><?= $base_currency ?></span></div>
         </div>
 
-        <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-slate-800 transition-all duration-300">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Gas Protocols Token</span>
-                <div class="w-7 h-7 rounded-lg bg-cyan-950/20 flex items-center justify-center border border-cyan-900/20 text-cyan-400"><i data-lucide="coins" class="w-3.5 h-3.5"></i></div>
-            </div>
-            <div class="text-3xl font-bold tracking-tight text-cyan-400 font-mono"><?= number_format($wallet['ari_balance'] ?? 0.00, 2) ?> <span class="text-xs font-sans text-slate-500 font-normal">ARI</span></div>
+        <!-- Action icons: transfer / withdraw / convert -->
+        <div class="grid grid-cols-3 gap-4">
+            <a href="remittance.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-cyan-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <i data-lucide="send" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Transfer</span>
+            </a>
+            <a href="withdraw.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <i data-lucide="banknote" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Withdraw</span>
+            </a>
+            <a href="trade.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-amber-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <i data-lucide="repeat" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Convert</span>
+            </a>
         </div>
 
-        <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-slate-800 transition-all duration-300 border-[#9945FF]/10 bg-[#9945FF]/5">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-mono text-[#9945FF] uppercase tracking-widest block font-bold">Solana Layer-1 Balance</span>
-                <div class="w-7 h-7 rounded-lg bg-[#9945FF]/20 flex items-center justify-center border border-[#9945FF]/30 text-[#9945FF]"><i data-lucide="cpu" class="w-3.5 h-3.5"></i></div>
+        <!-- Scrollable FX pairs -->
+        <div class="glass-panel rounded-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-900 bg-slate-950/10">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">FX Exchange Rates</h3>
             </div>
-            <div class="text-3xl font-bold tracking-tight text-white font-mono" id="sol-balance-display">0.0000 <span class="text-xs font-sans text-slate-500 font-normal">SOL</span></div>
-            <span class="text-[9px] font-mono text-slate-500 block mt-1" id="sol-usd-value">≈ $0.00 USD</span>
-        </div>
-
-        <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-slate-800 transition-all duration-300">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Bitcoin Settlement Assets</span>
-                <div class="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center border border-slate-800 text-slate-400"><i data-lucide="pie-chart" class="w-3.5 h-3.5"></i></div>
+            <div class="divide-y divide-slate-900 max-h-72 overflow-y-auto">
+                <?php foreach ($fiat_pairs as $cur):
+                    if ($cur === $base_currency) continue;
+                    $pair_rate = $rates[$cur] / $rates[$base_currency];
+                ?>
+                <div class="p-4 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-300"><?= $base_currency ?>/<?= $cur ?></span>
+                    <span class="text-xs font-mono text-cyan-400 font-bold"><?= number_format($pair_rate, 4) ?></span>
+                </div>
+                <?php endforeach; ?>
             </div>
-            <div class="text-3xl font-bold tracking-tight text-white font-mono"><?= sprintf('%.6f', $wallet['btc_balance'] ?? 0.00) ?> <span class="text-xs font-sans text-slate-500 font-normal">BTC</span></div>
         </div>
     </div>
 
-    <div class="glass-panel rounded-2xl overflow-hidden p-6 space-y-4">
-        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2"><i data-lucide="layers" class="w-3.5 h-3.5 text-cyan-400"></i>Cryptographic Network Routing Tables</h3>
-        
-        <div class="grid grid-cols-1 gap-3">
-            <div class="p-4 rounded-xl bg-[#060a13] border border-slate-900 font-mono text-[10px] text-slate-500 flex flex-col sm:flex-row gap-2 items-center justify-between hover:bg-[#080d1a] transition-all">
-                <div class="flex items-center gap-2"><i data-lucide="link" class="w-3.5 h-3.5 text-slate-400"></i><span>EVM Clearing Address (Ethereum/Ari-Chain Base Line):</span></div>
-                <span class="text-cyan-400 bg-slate-950 px-3 py-1 rounded-md border border-slate-900 select-all tracking-tight font-bold"><?= $wallet['blockchain_address'] ?? '0x0000000000000000000000000000000000000000' ?></span>
-            </div>
+    <!-- ============== CRYPTO DASHBOARD ============== -->
+    <div id="view-crypto" class="wallet-view space-y-6" style="display:none;">
 
-            <div class="p-4 rounded-xl bg-[#060a13] border border-slate-900 font-mono text-[10px] text-slate-500 flex flex-col sm:flex-row gap-2 items-center justify-between hover:bg-[#080d1a] transition-all border-[#9945FF]/10">
-                <div class="flex items-center gap-2"><i data-lucide="zap" class="w-3.5 h-3.5 text-[#14F195]"></i><span class="text-slate-300">Solana Programmatic Key (Connected Wallet Account):</span></div>
-                <span id="solana-pubkey-display" class="text-[#14F195] bg-slate-950 px-3 py-1 rounded-md border border-slate-900 select-all tracking-tight font-bold">Not Connected</span>
+        <!-- ARI balance card -->
+        <div class="glass-panel p-6 rounded-2xl border-cyan-500/10 bg-cyan-500/5">
+            <span class="text-[10px] font-mono text-cyan-400 uppercase tracking-widest block mb-2 font-bold">ARI Balance (Base Asset)</span>
+            <div class="text-4xl font-bold tracking-tight text-white font-mono">
+                <?= number_format($wallet['ari_balance'] ?? 0.00, 2) ?>
+                <span class="text-sm font-sans text-slate-500 font-normal">ARI</span>
+            </div>
+            <span class="text-xs font-mono text-slate-500 mt-1 block">
+                ≈ <?= number_format(($wallet['ari_balance'] ?? 0) / $rates['ARI'], 2) ?> USDC (1 USDC = 1 USD)
+            </span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+            <a href="remittance.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-cyan-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                    <i data-lucide="send" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Transfer</span>
+            </a>
+            <a href="withdraw.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <i data-lucide="banknote" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Withdraw</span>
+            </a>
+            <a href="trade.php" class="glass-panel p-5 rounded-2xl flex flex-col items-center gap-2 hover:border-amber-500/30 transition-all">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <i data-lucide="repeat" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xs font-semibold text-slate-300">Convert</span>
+            </a>
+        </div>
+
+        <!-- Crypto pairs vs ARI -->
+        <div class="glass-panel rounded-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-900 bg-slate-950/10">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Crypto Pairs (Base: ARI)</h3>
+            </div>
+            <div class="divide-y divide-slate-900 max-h-72 overflow-y-auto">
+                <?php foreach ($crypto_pairs as $cur):
+                    $pair_rate = $rates[$cur] / $rates['ARI'];
+                ?>
+                <div class="p-4 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-300">ARI/<?= $cur ?></span>
+                    <span class="text-xs font-mono text-cyan-400 font-bold"><?= number_format($pair_rate, 6) ?></span>
+                </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </div>
+
 </div>
 
-<script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const connectBtn = document.getElementById("connect-wallet-btn");
-        const btnText = document.getElementById("btn-text");
-        const pubkeyDisplay = document.getElementById("solana-pubkey-display");
-        const solBalanceDisplay = document.getElementById("sol-balance-display");
-        const solUsdDisplay = document.getElementById("sol-usd-value");
-        const walletStatusText = document.getElementById("wallet-status-text");
+    function switchView(view) {
+        document.querySelectorAll('.wallet-view').forEach(el => el.style.display = 'none');
+        document.getElementById('view-' + view).style.display = 'block';
 
-        let walletAddress = null;
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.classList.remove('bg-slate-900', 'text-white', 'border', 'border-slate-800');
+            btn.classList.add('text-slate-500');
+        });
+        const activeBtn = document.getElementById('btn-' + view + '-view');
+        activeBtn.classList.add('bg-slate-900', 'text-white', 'border', 'border-slate-800');
+        activeBtn.classList.remove('text-slate-500');
+    }
 
-        // Establish connection parameter directly to high-throughput Solana Mainnet RPC Endpoints
-        const connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com", "confirmed");
-
-        // Real-Time Portfolio Liquidity Fetch Engine
-        async function fetchOnChainSolBalance(publicKeyStr) {
-            try {
-                const pubKey = new solanaWeb3.PublicKey(publicKeyStr);
-                const lamports = await connection.getBalance(pubKey);
-                const solValue = lamports / solanaWeb3.LAMPORTS_PER_SOL;
-                
-                // Formulate presentation tracking structures
-                solBalanceDisplay.innerHTML = `${solValue.toFixed(4)} <span class="text-xs font-sans text-slate-500 font-normal">SOL</span>`;
-                
-                // Fetch basic estimation pricing variables (can map to CoinGecko endpoint dynamically later)
-                const fallbackPriceEst = solValue * 145.00; 
-                solUsdDisplay.innerText = `≈ $${fallbackPriceEst.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
-            } catch (err) {
-                console.error("On-chain extraction layer execution fault:", err);
-            }
-        }
-
-        // Web3 Connection Router Strategy
-        async function connectWallet() {
-            if (window.solana && window.solana.isPhantom) {
-                try {
-                    walletStatusText.innerText = "AUTHENTICATING NODE...";
-                    const response = await window.solana.connect();
-                    walletAddress = response.publicKey.toString();
-                    
-                    // Rewrite state management layout variables
-                    btnText.innerText = "Wallet Linked";
-                    pubkeyDisplay.innerText = walletAddress;
-                    walletStatusText.innerText = "CONNECTED // SECURE SOL DATA STREAM";
-                    
-                    // Execution balancing metrics
-                    await fetchOnChainSolBalance(walletAddress);
-
-                    // Optional: Push this connected address back to database seamlessly via background AJAX payload tracking
-                    fetch('update_solana_address.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ address: walletAddress })
-                    });
-
-                } catch (err) {
-                    walletStatusText.innerText = "CONNECTION REJECTED";
-                    console.error("User closed authorization pipeline matrix:", err);
-                }
-            } else {
-                alert("Solana Non-Custodial Engine Pipeline Interrupted: Please install Phantom Wallet or a compatible SPL provider extension to access VC parameters.");
-                window.open("https://phantom.app/", "_blank");
-            }
-        }
-
-        connectBtn.addEventListener("click", connectWallet);
+    // Basic swipe support for mobile (left/right between fiat and crypto)
+    let touchStartX = 0;
+    document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; });
+    document.addEventListener('touchend', e => {
+        const touchEndX = e.changedTouches[0].screenX;
+        const diff = touchEndX - touchStartX;
+        if (Math.abs(diff) < 50) return;
+        const fiatVisible = document.getElementById('view-fiat').style.display !== 'none';
+        if (diff < 0 && fiatVisible) switchView('crypto');
+        if (diff > 0 && !fiatVisible) switchView('fiat');
     });
+
+    lucide.createIcons();
 </script>
 
 <?php include 'footer.php'; ?>
