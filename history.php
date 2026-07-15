@@ -40,7 +40,8 @@ try {
 } catch (PDOException $e) {
     // Graceful error fallback tracking for database auditing
     $transactions = [];
-    $error_msg = "Ledger Sync Engine Failure: " . $e->getMessage();
+    error_log("history.php ledger sync failure: " . $e->getMessage());
+    $error_msg = "Ledger Sync Engine temporarily unavailable. Please try again later.";
 }
 
 include 'sidebar.php';

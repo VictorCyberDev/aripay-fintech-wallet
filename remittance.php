@@ -116,7 +116,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Remittance block settled successfully. Tx: " . substr($tx_hash, 0, 16) . "...</span></div>";
                         } catch (Exception $e) {
                             $conn->rollBack();
-                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Engine Processing Fault: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                            error_log("remittance.php settlement fault: " . $e->getMessage());
+                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Engine Processing Fault. Please try again later.</span></div>";
                         }
                     } else {
                         $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Transaction rejected: Insufficient liquidity reserves.</span></div>";

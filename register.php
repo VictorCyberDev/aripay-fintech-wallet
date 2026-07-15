@@ -76,7 +76,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($e->getCode() === 409) {
                 $error = $e->getMessage();
             } else {
-                $error = "System infrastructure conflict: " . $e->getMessage();
+                error_log("register.php provisioning failure: " . $e->getMessage());
+                $error = "System infrastructure conflict. Please try again later.";
             }
         }
     }

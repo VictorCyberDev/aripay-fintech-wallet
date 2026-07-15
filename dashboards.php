@@ -39,9 +39,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['send_payment'])) {
         'ARI' => 'ari_balance', 'BTC' => 'btc_balance', 'ETH' => 'eth_balance'
     ];
 
-    $source_col = $balance_map[$currency_sent];
-    $target_col = $balance_map[$currency_received];
+    $source_col = $balance_map[$currency_sent] ?? null;
+    $target_col = $balance_map[$currency_received] ?? null;
 
+    if (!$source_col || !$target_col) {
+        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Unsupported currency selection.</span></div>";
+    } else {
     $stmt = $conn->prepare("SELECT id FROM users WHERE phone = ?");
     $stmt->execute([$recipient_phone]);
     $recipient = $stmt->fetch();
@@ -88,7 +91,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['send_payment'])) {
                     $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Transfer settled. Tx Hash: " . substr($tx_hash, 0, 16) . "...</span></div>";
                 } catch (Exception $e) {
                     $conn->rollBack();
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='x-circle' class='w-4 h-4 shrink-0'></i><span>Engine fault: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                    error_log("dashboards.php transfer fault: " . $e->getMessage());
+                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='x-circle' class='w-4 h-4 shrink-0'></i><span>Engine fault. Please try again later.</span></div>";
                 }
             } else {
                 $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Transaction aborted: Insufficient asset balance reserves.</span></div>";
@@ -96,6 +100,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['send_payment'])) {
         }
     } else {
         $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='user-x' class='w-4 h-4 shrink-0'></i><span>Destination ledger mapping connection missing.</span></div>";
+    }
     }
 }
 
@@ -107,8 +112,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['trade_crypto'])) {
     $trade_action = $_POST['trade_action']; 
     $crypto_asset = $_POST['crypto_asset'];   
     $fiat_input   = floatval($_POST['fiat_amount']); 
-    $crypto_col   = strtolower($crypto_asset) . '_balance';
-    
+
+    // Whitelist the crypto asset to a known balance column to prevent
+    // SQL injection via the column identifier.
+    $crypto_col_map = ['ARI' => 'ari_balance', 'BTC' => 'btc_balance', 'ETH' => 'eth_balance'];
+    $crypto_col   = $crypto_col_map[$crypto_asset] ?? null;
+
     $stmt_w = $conn->prepare("SELECT * FROM wallets WHERE user_id = ? AND wallet_type = ?");
     $stmt_w->execute([$user_id, $mode]);
     $w = $stmt_w->fetch();
@@ -117,7 +126,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['trade_crypto'])) {
     $crypto_output = $fiat_to_usd * $rates[$crypto_asset];
 
     try {
-        if ($trade_action === 'buy') {
+        if (!$crypto_col || !isset($rates[$crypto_asset])) {
+            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Unsupported asset selection.</span></div>";
+        } elseif ($trade_action === 'buy') {
             if ($w && $w['fiat_balance'] >= $fiat_input) {
                 $conn->beginTransaction();
                 $stmt_sub = $conn->prepare("UPDATE wallets SET fiat_balance = fiat_balance - ? WHERE user_id = ? AND wallet_type = ?");
@@ -451,7 +462,7 @@ $wallet = $stmt_wallet->fetch();
             if(currentBtn) currentBtn.classList.add('bg-[#0E1424]', 'text-white');
         }
 
-        switchTab('<?= $active_tab ?>');
+        switchTab('<?= htmlspecialchars($active_tab, ENT_QUOTES, 'UTF-8') ?>');
 
         const amtInput = document.getElementById('amount_sent');
         const currSent = document.getElementById('currency_sent');
