@@ -1,12 +1,6 @@
 <?php
-ini_set('display_errors', 0);
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
 $msg = "";
 $new_cheque = null;
 
@@ -29,7 +23,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
     $currency = $_POST['currency'];
 
     if ($amount <= 0) {
-        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Enter a valid amount greater than zero.</span></div>";
+        $msg = notify('error', 'Enter a valid amount greater than zero.', 'alert-circle');
     } else {
         // Check sender has enough balance in the relevant column
         $balance_map = ['USD'=>'fiat_balance','NGN'=>'fiat_balance','GBP'=>'fiat_balance','EUR'=>'fiat_balance','ARI'=>'ari_balance'];
@@ -40,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
         $balance = $stmt_w->fetchColumn();
 
         if ($balance < $amount) {
-            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Insufficient balance to issue this cheque.</span></div>";
+            $msg = notify('error', 'Insufficient balance to issue this cheque.', 'wallet');
         } else {
             try {
                 $conn->beginTransaction();
@@ -57,10 +51,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
 
                 $conn->commit();
                 $new_cheque = ['serial' => $serial, 'amount' => $amount, 'currency' => $currency];
-                $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>E-cheque generated successfully.</span></div>";
+                $msg = notify('success', 'E-cheque generated successfully.', 'check-circle');
             } catch (Exception $e) {
                 $conn->rollBack();
-                $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Error: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                $msg = notify('error', 'Error: ' . htmlspecialchars($e->getMessage()), 'shield-alert');
             }
         }
     }

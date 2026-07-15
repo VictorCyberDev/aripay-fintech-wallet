@@ -1,12 +1,6 @@
 <?php
-ini_set('display_errors', 0);
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
 $msg = "";
 
 // NOTE: This page needs TWO new tables. Run this SQL once in phpMyAdmin:
@@ -60,11 +54,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_cheque'])) {
     $amount = floatval($_POST['amount']);
 
     if ($amount <= 0 || empty($owner_acc) || empty($receiver_acc)) {
-        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Please fill all required fields correctly.</span></div>";
+        $msg = notify('error', 'Please fill all required fields correctly.', 'alert-circle');
     } else {
         $stmt = $conn->prepare("INSERT INTO physical_cheques (submitted_by, cheque_type, bank_name, cheque_owner_acc_no, receiver_acc_no, receiver_name, amount, wallet_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$user_id, $cheque_type, $bank_name, $owner_acc, $receiver_acc, $receiver_name, $amount, $mode]);
-        $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Cheque submitted for processing. Status: Pending review.</span></div>";
+        $msg = notify('success', 'Cheque submitted for processing. Status: Pending review.', 'check-circle');
     }
 }
 

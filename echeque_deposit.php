@@ -1,11 +1,6 @@
 <?php
-ini_set('display_errors', 0);
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
 $msg = "";
 
 // NOTE: Uses the same `cheques` table created for echeque_generate.php.
@@ -19,11 +14,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['redeem_cheque'])) {
     $cheque = $stmt_c->fetch(PDO::FETCH_ASSOC);
 
     if (!$cheque) {
-        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='search-x' class='w-4 h-4 shrink-0'></i><span>No cheque found matching that serial number.</span></div>";
+        $msg = notify('error', 'No cheque found matching that serial number.', 'search-x');
     } elseif ($cheque['status'] !== 'active') {
-        $msg = "<div class='notification-card border-amber-500/30 bg-amber-500/10 text-amber-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>This cheque has already been " . htmlspecialchars($cheque['status']) . ".</span></div>";
+        $msg = notify('warning', 'This cheque has already been ' . htmlspecialchars($cheque['status']) . '.', 'alert-triangle');
     } elseif ($cheque['issuer_id'] == $user_id) {
-        $msg = "<div class='notification-card border-amber-500/30 bg-amber-500/10 text-amber-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>You cannot redeem a cheque you issued yourself.</span></div>";
+        $msg = notify('warning', 'You cannot redeem a cheque you issued yourself.', 'alert-triangle');
     } else {
         $balance_map = ['USD'=>'fiat_balance','NGN'=>'fiat_balance','GBP'=>'fiat_balance','EUR'=>'fiat_balance','ARI'=>'ari_balance'];
         $col = $balance_map[$cheque['currency']] ?? 'fiat_balance';
@@ -40,15 +35,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['redeem_cheque'])) {
             $stmt_update->execute([$user_id, $cheque['id']]);
 
             // Log it in the transactions table too, so it shows in history/receipts
-            $tx_hash = "0x" . hash('sha256', $cheque['issuer_id'] . $user_id . time() . mt_rand());
-            $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt_tx->execute([$cheque['issuer_id'], $user_id, $mode, $cheque['amount'], $cheque['currency'], $cheque['amount'], $cheque['currency'], $tx_hash]);
+            insert_transaction($conn, $cheque['issuer_id'], $user_id, $mode, $cheque['amount'], $cheque['currency'], $cheque['amount'], $cheque['currency']);
 
             $conn->commit();
-            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Cheque redeemed: +" . number_format($cheque['amount'], 2) . " " . $cheque['currency'] . " credited to your wallet.</span></div>";
+            $msg = notify('success', 'Cheque redeemed: +' . number_format($cheque['amount'], 2) . ' ' . $cheque['currency'] . ' credited to your wallet.', 'check-circle');
         } catch (Exception $e) {
             $conn->rollBack();
-            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Error: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+            $msg = notify('error', 'Error: ' . htmlspecialchars($e->getMessage()), 'shield-alert');
         }
     }
 }
