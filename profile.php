@@ -7,11 +7,16 @@ $user_id = $_SESSION['user_id'];
 $status_msg = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
-    $new_currency = $_POST['base_currency'];
-    $stmt = $conn->prepare("UPDATE users SET base_currency = ? WHERE id = ?");
-    if($stmt->execute([$new_currency, $user_id])) {
-        $_SESSION['base_currency'] = $new_currency;
-        $status_msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'>Profile adjustments written successfully to remote cloud nodes.</div>";
+    $new_currency = $_POST['base_currency'] ?? '';
+    $allowed_currencies = ['USD', 'NGN', 'GBP', 'EUR'];
+    if (!in_array($new_currency, $allowed_currencies, true)) {
+        $status_msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'>Unsupported base currency selection.</div>";
+    } else {
+        $stmt = $conn->prepare("UPDATE users SET base_currency = ? WHERE id = ?");
+        if($stmt->execute([$new_currency, $user_id])) {
+            $_SESSION['base_currency'] = $new_currency;
+            $status_msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'>Profile adjustments written successfully to remote cloud nodes.</div>";
+        }
     }
 }
 

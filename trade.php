@@ -112,7 +112,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                     }
                 } catch (Exception $e) {
                     if ($conn->inTransaction()) { $conn->rollBack(); }
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Core Ledger Engine Exception: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                    error_log("trade.php ledger exception: " . $e->getMessage());
+                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Core Ledger Engine Exception. Please try again later.</span></div>";
                 }
             }
         }
