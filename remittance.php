@@ -1,31 +1,10 @@
 <?php
-// ==========================================
-// CORE DEBUGGING & SECURITY ARCHITECTURE
-// ==========================================
-ini_set('display_errors', 0); // Turned off for security; flip to 1 if debugging layout bottlenecks
-require 'db.php';
-session_start();
+require 'auth.php';
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
-
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
 $msg = "";
 
 // Institutional Internal Exchange Matrix Rates (Pinned relative to base USD)
-$rates = [
-    'USD' => 1.0, 
-    'NGN' => 1500.0, 
-    'GBP' => 0.78, 
-    'EUR' => 0.92,
-    'ARI' => 0.80, 
-    'SOL' => 0.0068,  // $145.00 USD baseline simulation
-    'USDC' => 1.00    // Solana Stablecoin Asset 
-];
+$rates = app_rates();
 
 // Map assets safely to database column targets
 $balance_map = [
@@ -43,7 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
     $currency_received = $_POST['currency_received'];
 
     if ($amount_to_send <= 0) {
-        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Transaction aborted: Invalid execution payload volume.</span></div>";
+        $msg = notify('error', 'Transaction aborted: Invalid execution payload volume.', 'alert-circle');
     } else {
         // 1. Map target node destination parameters
         $stmt = $conn->prepare("SELECT id, base_currency FROM users WHERE phone = ? LIMIT 1");
@@ -54,14 +33,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
             $rec_id = $recipient['id'];
 
             if ($rec_id === $user_id) {
-                $msg = "<div class='notification-card border-amber-500/30 bg-amber-500/10 text-amber-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>Routing Failure: Source parameters match destination targets.</span></div>";
+                $msg = notify('warning', 'Routing Failure: Source parameters match destination targets.', 'alert-triangle');
             } else {
                 // 2. Query source liquidity depths
                 $source_col = $balance_map[$currency_sent] ?? null;
                 $target_col = $balance_map[$currency_received] ?? null;
 
                 if (!$source_col || !$target_col) {
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Asset Mapping Engine: Unauthorized currency tier token.</span></div>";
+                    $msg = notify('error', 'Asset Mapping Engine: Unauthorized currency tier token.', 'shield-alert');
                 } else {
                     $stmt_bal = $conn->prepare("SELECT $source_col FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
                     $stmt_bal->execute([$user_id, $mode]);
@@ -108,23 +87,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $stmt_credit->execute([$recipient_credit, $rec_id, $mode]);
 
                             // Cryptographic ledger log initialization
-                            $tx_hash = "0x" . hash('sha256', $user_id . $rec_id . time() . mt_rand());
-                            $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                            $stmt_tx->execute([$user_id, $rec_id, $mode, $amount_to_send, $currency_sent, $recipient_credit, $currency_received, $tx_hash]);
+                            $tx_hash = insert_transaction($conn, $user_id, $rec_id, $mode, $amount_to_send, $currency_sent, $recipient_credit, $currency_received);
 
                             $conn->commit();
-                            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Remittance block settled successfully. Tx: " . substr($tx_hash, 0, 16) . "...</span></div>";
+                            $msg = notify('success', 'Remittance block settled successfully. Tx: ' . substr($tx_hash, 0, 16) . '...', 'check-circle');
                         } catch (Exception $e) {
                             $conn->rollBack();
-                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Engine Processing Fault: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                            $msg = notify('error', 'Engine Processing Fault: ' . htmlspecialchars($e->getMessage()), 'shield-alert');
                         }
                     } else {
-                        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Transaction rejected: Insufficient liquidity reserves.</span></div>";
+                        $msg = notify('error', 'Transaction rejected: Insufficient liquidity reserves.', 'wallet');
                     }
                 }
             }
         } else {
-            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='user-x' class='w-4 h-4 shrink-0'></i><span>Routing Failure: Specified user phone ledger destination not found.</span></div>";
+            $msg = notify('error', 'Routing Failure: Specified user phone ledger destination not found.', 'user-x');
         }
     }
 }

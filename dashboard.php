@@ -1,25 +1,10 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
-
-$stmt = $conn->prepare("SELECT * FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
-$stmt->execute([$user_id, $mode]);
-$wallet = $stmt->fetch();
+$wallet = fetch_active_wallet($conn, $user_id, $mode);
 
 // Same rate table used across the app - keep consistent everywhere
-$rates = [
-    'USD' => 1.0, 'NGN' => 1500.0, 'GBP' => 0.78, 'EUR' => 0.92,
-    'ARI' => 0.80, 'BTC' => 0.000015, 'ETH' => 0.00028,
-    'SOL' => 0.0068, 'USDC' => 1.00, 'USDT' => 1.00
-];
+$rates = app_rates();
 
 $fiat_pairs = ['USD', 'NGN', 'GBP', 'EUR'];
 $crypto_pairs = ['BTC', 'ETH', 'SOL', 'USDC', 'USDT'];

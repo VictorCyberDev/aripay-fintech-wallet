@@ -1,9 +1,6 @@
 <?php
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
 $status_msg = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
@@ -11,7 +8,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
     $stmt = $conn->prepare("UPDATE users SET base_currency = ? WHERE id = ?");
     if($stmt->execute([$new_currency, $user_id])) {
         $_SESSION['base_currency'] = $new_currency;
-        $status_msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'>Profile adjustments written successfully to remote cloud nodes.</div>";
+        $status_msg = notify('success', 'Profile adjustments written successfully to remote cloud nodes.');
     }
 }
 

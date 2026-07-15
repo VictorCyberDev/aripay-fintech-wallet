@@ -1,36 +1,15 @@
 <?php
-ini_set('display_errors', 0);
-require 'db.php';
-session_start();
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+require 'auth.php';
 
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
-
-// Account + wallet details
+// Account details
 $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $account = $stmt->fetch();
 
-$stmt_w = $conn->prepare("SELECT * FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
-$stmt_w->execute([$user_id, $mode]);
-$wallet = $stmt_w->fetch();
+$wallet = fetch_active_wallet($conn, $user_id, $mode);
 
-// Recent receipts (same query pattern as history.php, limited to last 10)
-$query = "SELECT 
-            t.id, t.sender_id, t.receiver_id, t.amount_sent, t.currency_sent,
-            t.amount_received, t.currency_received, t.tx_hash, t.created_at,
-            s.fullname AS sender_name, r.fullname AS receiver_name
-          FROM transactions t
-          LEFT JOIN users s ON t.sender_id = s.id
-          LEFT JOIN users r ON t.receiver_id = r.id
-          WHERE (t.sender_id = ? OR t.receiver_id = ?) AND t.wallet_type = ?
-          ORDER BY t.created_at DESC
-          LIMIT 10";
-$stmt_tx = $conn->prepare($query);
-$stmt_tx->execute([$user_id, $user_id, $mode]);
-$receipts = $stmt_tx->fetchAll(PDO::FETCH_ASSOC);
+// Recent receipts (last 10)
+$receipts = user_transactions($conn, $user_id, $mode, 10);
 
 include 'sidebar.php';
 ?>

@@ -1,31 +1,10 @@
 <?php
-// ==========================================
-// SECURITY & DATA METRIC ROUTER
-// ==========================================
-ini_set('display_errors', 0); // Production secure fallback
-require 'db.php';
-session_start();
+require 'auth.php';
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
-
-$user_id = $_SESSION['user_id'];
-$mode = $_SESSION['wallet_mode'] ?? 'live';
-$base_currency = $_SESSION['base_currency'] ?? 'USD';
 $msg = "";
 
 // High-Throughput Baseline Exchange Index Variables (Relative to 1.00 USD)
-$rates = [
-    'USD'  => 1.0, 
-    'NGN'  => 1500.0, 
-    'GBP'  => 0.78, 
-    'EUR'  => 0.92,
-    'BTC'  => 0.000015, // Mock historical compression metric
-    'SOL'  => 0.0068,   // $145.00 USD Equilibrium base
-    'USDC' => 1.00      // Pegged Stable Tier
-];
+$rates = app_rates();
 
 // Target column parsing parameters
 $balance_map = [
@@ -43,12 +22,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
     $fiat_volume  = floatval($_POST['fiat_amount']);
 
     if ($fiat_volume <= 0) {
-        $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Execution Denied: Order volume parameters out of algorithmic bounds.</span></div>";
+        $msg = notify('error', 'Execution Denied: Order volume parameters out of algorithmic bounds.', 'alert-circle');
     } else {
         $crypto_col = $balance_map[$crypto_asset] ?? null;
 
         if (!$crypto_col) {
-            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Routing Failure: Unmapped ledger target symbol asset.</span></div>";
+            $msg = notify('error', 'Routing Failure: Unmapped ledger target symbol asset.', 'shield-alert');
         } else {
             // Read wallet indexes inside an isolated state snapshot
             $stmt_w = $conn->prepare("SELECT fiat_balance, $crypto_col FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
@@ -56,7 +35,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
             $wallet = $stmt_w->fetch();
 
             if (!$wallet) {
-                $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='user-x' class='w-4 h-4 shrink-0'></i><span>Account Mapping Error: Underlying wallet matrix not instantiated.</span></div>";
+                $msg = notify('error', 'Account Mapping Error: Underlying wallet matrix not instantiated.', 'user-x');
             } else {
                 // Algorithmic Yield Formulas
                 $fiat_in_usd  = $fiat_volume / $rates[$base_currency];
@@ -76,15 +55,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                             $stmt_add = $conn->prepare("UPDATE wallets SET $crypto_col = $crypto_col + ? WHERE user_id = ? AND wallet_type = ?");
                             $stmt_add->execute([$crypto_yield, $user_id, $mode]);
                             
-                            $tx_hash = "0x" . hash('sha256', $user_id . time() . mt_rand() . "BUY");
-                            $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                             // Internal trade registers system user as both sender and destination consumer
-                            $stmt_tx->execute([$user_id, $user_id, $mode, $fiat_volume, $base_currency, $crypto_yield, $crypto_asset, $tx_hash]);
+                            insert_transaction($conn, $user_id, $user_id, $mode, $fiat_volume, $base_currency, $crypto_yield, $crypto_asset, "BUY");
 
                             $conn->commit();
-                            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='trending-up' class='w-4 h-4 shrink-0'></i><span>Order Executed: Long position allocated + " . sprintf(($crypto_asset==='BTC'?'%.6f':'%.4f'), $crypto_yield) . " {$crypto_asset}</span></div>";
+                            $msg = notify('success', 'Order Executed: Long position allocated + ' . sprintf(($crypto_asset==='BTC'?'%.6f':'%.4f'), $crypto_yield) . " {$crypto_asset}", 'trending-up');
                         } else {
-                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>Order Aborted: Insufficient localized fiat pool allocations.</span></div>";
+                            $msg = notify('warning', 'Order Aborted: Insufficient localized fiat pool allocations.', 'alert-triangle');
                         }
                     } 
                     // ------------------------------------------
@@ -100,19 +77,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                             $stmt_add = $conn->prepare("UPDATE wallets SET fiat_balance = fiat_balance + ? WHERE user_id = ? AND wallet_type = ?");
                             $stmt_add->execute([$fiat_volume, $user_id, $mode]);
                             
-                            $tx_hash = "0x" . hash('sha256', $user_id . time() . mt_rand() . "SELL");
-                            $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                            $stmt_tx->execute([$user_id, $user_id, $mode, $crypto_yield, $crypto_asset, $fiat_volume, $base_currency, $tx_hash]);
+                            insert_transaction($conn, $user_id, $user_id, $mode, $crypto_yield, $crypto_asset, $fiat_volume, $base_currency, "SELL");
 
                             $conn->commit();
-                            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='trending-down' class='w-4 h-4 shrink-0'></i><span>Order Executed: Portfolio liquidated. + " . number_format($fiat_volume, 2) . " {$base_currency} matched.</span></div>";
+                            $msg = notify('success', 'Order Executed: Portfolio liquidated. + ' . number_format($fiat_volume, 2) . " {$base_currency} matched.", 'trending-down');
                         } else {
-                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>Order Aborted: Portfolio token balance depth insufficient for liquidation.</span></div>";
+                            $msg = notify('warning', 'Order Aborted: Portfolio token balance depth insufficient for liquidation.', 'alert-triangle');
                         }
                     }
                 } catch (Exception $e) {
                     if ($conn->inTransaction()) { $conn->rollBack(); }
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Core Ledger Engine Exception: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                    $msg = notify('error', 'Core Ledger Engine Exception: ' . htmlspecialchars($e->getMessage()), 'shield-alert');
                 }
             }
         }
@@ -120,9 +95,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
 }
 
 // Re-read structural layout matrix balances cleanly after any update lifecycle
-$stmt_refresh = $conn->prepare("SELECT * FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
-$stmt_refresh->execute([$user_id, $mode]);
-$live_wallet = $stmt_refresh->fetch();
+$live_wallet = fetch_active_wallet($conn, $user_id, $mode);
 
 include 'sidebar.php';
 ?>
