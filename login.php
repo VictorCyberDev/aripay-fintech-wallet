@@ -1,5 +1,6 @@
 <?php
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 
 $error = "";
@@ -17,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if (empty($email) || empty($raw_pw)) {
         $error = "All security parameters must be filled.";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif (!is_valid_email($email)) {
         $error = "Invalid format structure for email addresses.";
     } else {
         try {

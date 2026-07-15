@@ -1,6 +1,7 @@
 <?php
 ini_set('display_errors', 0);
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
 
@@ -26,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['redeem_cheque'])) {
         $msg = "<div class='notification-card border-amber-500/30 bg-amber-500/10 text-amber-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>You cannot redeem a cheque you issued yourself.</span></div>";
     } else {
         $balance_map = ['USD'=>'fiat_balance','NGN'=>'fiat_balance','GBP'=>'fiat_balance','EUR'=>'fiat_balance','ARI'=>'ari_balance'];
-        $col = $balance_map[$cheque['currency']] ?? 'fiat_balance';
+        $col = resolve_balance_column($cheque['currency'], $balance_map, 'fiat_balance');
 
         try {
             $conn->beginTransaction();
@@ -40,7 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['redeem_cheque'])) {
             $stmt_update->execute([$user_id, $cheque['id']]);
 
             // Log it in the transactions table too, so it shows in history/receipts
-            $tx_hash = "0x" . hash('sha256', $cheque['issuer_id'] . $user_id . time() . mt_rand());
+            $tx_hash = generate_tx_hash($cheque['issuer_id'] . $user_id . time() . mt_rand());
             $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt_tx->execute([$cheque['issuer_id'], $user_id, $mode, $cheque['amount'], $cheque['currency'], $cheque['amount'], $cheque['currency'], $tx_hash]);
 

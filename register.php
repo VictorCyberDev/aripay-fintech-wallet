@@ -1,5 +1,6 @@
 <?php
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 
 $error = "";
@@ -14,25 +15,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // 2. Server-side Validation
     if (empty($fullname) || empty($email) || empty($phone) || empty($raw_pw)) {
         $error = "All fields are strictly required.";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif (!is_valid_email($email)) {
         $error = "Please provide a valid corporate or personal email address.";
-    } elseif (strlen($raw_pw) < 8) {
+    } elseif (!is_strong_password($raw_pw)) {
         $error = "Security Policy: Password must be at least 8 characters long.";
     } else {
         // 3. Native Secure Hash
         $password = password_hash($raw_pw, PASSWORD_BCRYPT);
 
         // 4. Robust Currency Routing Logic
-        $base_currency = "USD"; // Institutional Fallback
-        if (str_starts_with($phone, '+234')) {
-            $base_currency = "NGN";
-        } elseif (str_starts_with($phone, '+44')) {
-            $base_currency = "GBP";
-        } elseif (str_starts_with($phone, '+27')) {
-            $base_currency = "ZAR";
-        } elseif (str_starts_with($phone, '+33') || str_starts_with($phone, '+49')) {
-            $base_currency = "EUR";
-        }
+        $base_currency = base_currency_from_phone($phone);
 
         try {
             $conn->beginTransaction();
@@ -51,8 +43,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $user_id = $conn->lastInsertId();
 
             // Generate Cryptographically Secure Pseudo-Random Blockchain Addresses
-            $blockchain_address_demo = "0x" . bin2hex(random_bytes(20));
-            $blockchain_address_live = "0x" . bin2hex(random_bytes(20));
+            $blockchain_address_demo = generate_blockchain_address();
+            $blockchain_address_live = generate_blockchain_address();
 
             // Allocate Assets to Demo Environment ($10,000.00 sandbox allocation)
             $stmt_wallet = $conn->prepare("INSERT INTO wallets (user_id, wallet_type, ari_balance, fiat_balance, blockchain_address) VALUES (?, ?, ?, ?, ?)");
