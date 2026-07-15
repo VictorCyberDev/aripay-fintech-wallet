@@ -4,6 +4,7 @@
 // ==========================================
 ini_set('display_errors', 0); // Turned off for security; flip to 1 if debugging layout bottlenecks
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 
 if (!isset($_SESSION['user_id'])) {
@@ -57,8 +58,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                 $msg = "<div class='notification-card border-amber-500/30 bg-amber-500/10 text-amber-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>Routing Failure: Source parameters match destination targets.</span></div>";
             } else {
                 // 2. Query source liquidity depths
-                $source_col = $balance_map[$currency_sent] ?? null;
-                $target_col = $balance_map[$currency_received] ?? null;
+                $source_col = resolve_balance_column($currency_sent, $balance_map);
+                $target_col = resolve_balance_column($currency_received, $balance_map);
 
                 if (!$source_col || !$target_col) {
                     $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Asset Mapping Engine: Unauthorized currency tier token.</span></div>";
@@ -68,13 +69,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                     $sender_balance = $stmt_bal->fetchColumn();
 
                     // 3. Mathematical Parsing Layer (Convert everything safely via USD cross-rates)
-                    $amount_in_usd = $amount_to_send / $rates[$currency_sent];
+                    $amount_in_usd = convert_to_usd($amount_to_send, $currency_sent, $rates);
                     $deduction_amount = $amount_to_send;
-                    $credit_amount = $amount_in_usd * $rates[$currency_received];
+                    $credit_amount = convert_from_usd($amount_in_usd, $currency_received, $rates);
 
                     // Structural variance balancing if currency is standard fiat tied to custom localized settings
                     if ($source_col === 'fiat_balance' && $currency_sent !== $base_currency) {
-                        $deduction_amount = $amount_in_usd * $rates[$base_currency];
+                        $deduction_amount = convert_from_usd($amount_in_usd, $base_currency, $rates);
                     }
 
                     // 4. Verification Check Constraints
@@ -90,7 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $recipient_credit = $credit_amount;
                             if ($target_col === 'fiat_balance') {
                                 $rec_base = $recipient['base_currency'] ?: 'USD';
-                                $recipient_credit = $amount_in_usd * $rates[$rec_base];
+                                $recipient_credit = convert_from_usd($amount_in_usd, $rec_base, $rates);
                             }
 
                             // Dynamic on-the-fly table checking to prevent row initialization failures
@@ -98,7 +99,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $stmt_check_rec->execute([$rec_id, $mode]);
                             if ($stmt_check_rec->fetchColumn() == 0) {
                                 // Initialize non-existent target wallet maps on the fly
-                                $init_address = "0x" . hash('sha256', $rec_id . time());
+                                $init_address = generate_tx_hash($rec_id . time());
                                 $stmt_init = $conn->prepare("INSERT INTO wallets (user_id, wallet_type, blockchain_address, fiat_balance, ari_balance) VALUES (?, ?, ?, 0, 0)");
                                 $stmt_init->execute([$rec_id, $mode, $init_address]);
                             }
@@ -108,7 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $stmt_credit->execute([$recipient_credit, $rec_id, $mode]);
 
                             // Cryptographic ledger log initialization
-                            $tx_hash = "0x" . hash('sha256', $user_id . $rec_id . time() . mt_rand());
+                            $tx_hash = generate_tx_hash($user_id . $rec_id . time() . mt_rand());
                             $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                             $stmt_tx->execute([$user_id, $rec_id, $mode, $amount_to_send, $currency_sent, $recipient_credit, $currency_received, $tx_hash]);
 

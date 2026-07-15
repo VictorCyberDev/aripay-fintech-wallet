@@ -1,6 +1,7 @@
 <?php
 ini_set('display_errors', 0);
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
 
@@ -33,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
     } else {
         // Check sender has enough balance in the relevant column
         $balance_map = ['USD'=>'fiat_balance','NGN'=>'fiat_balance','GBP'=>'fiat_balance','EUR'=>'fiat_balance','ARI'=>'ari_balance'];
-        $col = $balance_map[$currency] ?? 'fiat_balance';
+        $col = resolve_balance_column($currency, $balance_map, 'fiat_balance');
 
         $stmt_w = $conn->prepare("SELECT $col FROM wallets WHERE user_id = ? AND wallet_type = ? LIMIT 1");
         $stmt_w->execute([$user_id, $mode]);
@@ -46,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
                 $conn->beginTransaction();
 
                 // Generate a unique serial number: ARI-CHQ-XXXXXXXX
-                $serial = "ARI-CHQ-" . strtoupper(bin2hex(random_bytes(6)));
+                $serial = generate_cheque_serial();
 
                 // Hold the funds by deducting from balance now (released back if voided)
                 $stmt_deduct = $conn->prepare("UPDATE wallets SET $col = $col - ? WHERE user_id = ? AND wallet_type = ?");

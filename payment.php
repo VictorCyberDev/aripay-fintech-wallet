@@ -1,6 +1,7 @@
 <?php
 ini_set('display_errors', 0);
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
 
@@ -55,7 +56,7 @@ include 'sidebar.php';
             </div>
             <div>
                 <span class="text-slate-500 block mb-1">Account ID</span>
-                <span class="text-slate-200 font-mono">NODE://<?= str_pad($user_id, 5, '0', STR_PAD_LEFT) ?></span>
+                <span class="text-slate-200 font-mono"><?= htmlspecialchars(format_account_id($user_id)) ?></span>
             </div>
             <div>
                 <span class="text-slate-500 block mb-1">Base Currency</span>

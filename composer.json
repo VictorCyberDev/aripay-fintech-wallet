@@ -1,0 +1,21 @@
+{
+    "name": "aripay/fintech-wallet",
+    "description": "Ari-Pay hybrid blockchain borderless fintech wallet",
+    "type": "project",
+    "license": "proprietary",
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "files": [
+            "lib/wallet_functions.php"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:coverage": "phpunit --coverage-text"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

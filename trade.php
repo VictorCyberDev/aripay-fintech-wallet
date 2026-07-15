@@ -4,6 +4,7 @@
 // ==========================================
 ini_set('display_errors', 0); // Production secure fallback
 require 'db.php';
+require_once 'lib/wallet_functions.php';
 session_start();
 
 if (!isset($_SESSION['user_id'])) {
@@ -45,7 +46,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
     if ($fiat_volume <= 0) {
         $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Execution Denied: Order volume parameters out of algorithmic bounds.</span></div>";
     } else {
-        $crypto_col = $balance_map[$crypto_asset] ?? null;
+        $crypto_col = resolve_balance_column($crypto_asset, $balance_map);
 
         if (!$crypto_col) {
             $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Routing Failure: Unmapped ledger target symbol asset.</span></div>";
@@ -59,8 +60,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                 $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='user-x' class='w-4 h-4 shrink-0'></i><span>Account Mapping Error: Underlying wallet matrix not instantiated.</span></div>";
             } else {
                 // Algorithmic Yield Formulas
-                $fiat_in_usd  = $fiat_volume / $rates[$base_currency];
-                $crypto_yield = $fiat_in_usd * $rates[$crypto_asset];
+                $fiat_in_usd  = convert_to_usd($fiat_volume, $base_currency, $rates);
+                $crypto_yield = convert_from_usd($fiat_in_usd, $crypto_asset, $rates);
 
                 try {
                     // ------------------------------------------
@@ -76,13 +77,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                             $stmt_add = $conn->prepare("UPDATE wallets SET $crypto_col = $crypto_col + ? WHERE user_id = ? AND wallet_type = ?");
                             $stmt_add->execute([$crypto_yield, $user_id, $mode]);
                             
-                            $tx_hash = "0x" . hash('sha256', $user_id . time() . mt_rand() . "BUY");
+                            $tx_hash = generate_tx_hash($user_id . time() . mt_rand() . "BUY");
                             $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                             // Internal trade registers system user as both sender and destination consumer
                             $stmt_tx->execute([$user_id, $user_id, $mode, $fiat_volume, $base_currency, $crypto_yield, $crypto_asset, $tx_hash]);
 
                             $conn->commit();
-                            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='trending-up' class='w-4 h-4 shrink-0'></i><span>Order Executed: Long position allocated + " . sprintf(($crypto_asset==='BTC'?'%.6f':'%.4f'), $crypto_yield) . " {$crypto_asset}</span></div>";
+                            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='trending-up' class='w-4 h-4 shrink-0'></i><span>Order Executed: Long position allocated + " . format_asset_amount($crypto_yield, $crypto_asset) . " {$crypto_asset}</span></div>";
                         } else {
                             $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-triangle' class='w-4 h-4 shrink-0'></i><span>Order Aborted: Insufficient localized fiat pool allocations.</span></div>";
                         }
@@ -100,7 +101,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                             $stmt_add = $conn->prepare("UPDATE wallets SET fiat_balance = fiat_balance + ? WHERE user_id = ? AND wallet_type = ?");
                             $stmt_add->execute([$fiat_volume, $user_id, $mode]);
                             
-                            $tx_hash = "0x" . hash('sha256', $user_id . time() . mt_rand() . "SELL");
+                            $tx_hash = generate_tx_hash($user_id . time() . mt_rand() . "SELL");
                             $stmt_tx = $conn->prepare("INSERT INTO transactions (sender_id, receiver_id, wallet_type, amount_sent, currency_sent, amount_received, currency_received, tx_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                             $stmt_tx->execute([$user_id, $user_id, $mode, $crypto_yield, $crypto_asset, $fiat_volume, $base_currency, $tx_hash]);
 

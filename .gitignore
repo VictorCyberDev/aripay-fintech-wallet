@@ -1,0 +1,12 @@
+# Secrets / local DB config (abstracted per README security notice)
+db.php
+.env
+.env.*
+
+# Dependencies
+/vendor/
+
+# PHPUnit
+/.phpunit.cache/
+.phpunit.result.cache
+/coverage/
