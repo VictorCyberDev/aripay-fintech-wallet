@@ -2,7 +2,7 @@
 // ==========================================
 // CORE DEBUGGING & SECURITY ARCHITECTURE
 // ==========================================
-ini_set('display_errors', 0); // Turned off for security; flip to 1 if debugging layout bottlenecks
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -115,8 +115,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['execute_remittance']))
                             $conn->commit();
                             $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Remittance block settled successfully. Tx: " . substr($tx_hash, 0, 16) . "...</span></div>";
                         } catch (Exception $e) {
-                            $conn->rollBack();
-                            $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Engine Processing Fault: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                            if ($conn->inTransaction()) { $conn->rollBack(); }
+                            log_app_error('Remittance settlement failed', $e);
+                            $msg = user_error_notice('Remittance could not be settled. No funds were moved.');
                         }
                     } else {
                         $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Transaction rejected: Insufficient liquidity reserves.</span></div>";

@@ -1,4 +1,5 @@
 <?php
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -44,6 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $error = "Authentication failed. Invalid cryptographic credentials.";
             }
         } catch (PDOException $e) {
+            log_app_error('Login query failed', $e);
             $error = "System infrastructure conflict: Secure gateway timeout.";
         }
     }

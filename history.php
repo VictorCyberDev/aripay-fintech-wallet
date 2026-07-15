@@ -2,7 +2,7 @@
 // ==========================================
 // CORE SECURITY & LEDGER ROUTING INTERFACE
 // ==========================================
-ini_set('display_errors', 0); // Production secure fallback
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -38,9 +38,10 @@ try {
     $stmt->execute([$user_id, $user_id, $mode]);
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    // Graceful error fallback tracking for database auditing
+    // Degrade gracefully: log the real fault, show a safe message.
+    log_app_error('Transaction history query failed', $e);
     $transactions = [];
-    $error_msg = "Ledger Sync Engine Failure: " . $e->getMessage();
+    $error_msg = "Unable to load transaction history right now. Please try again shortly.";
 }
 
 include 'sidebar.php';

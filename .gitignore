@@ -1,0 +1,3 @@
+# Runtime error logs written by bootstrap.php
+logs/
+*.log
