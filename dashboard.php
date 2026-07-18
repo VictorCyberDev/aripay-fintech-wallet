@@ -23,6 +23,8 @@ $rates = [
 
 $fiat_pairs = ['USD', 'NGN', 'GBP', 'EUR'];
 $crypto_pairs = ['BTC', 'ETH', 'SOL', 'USDC', 'USDT'];
+// Extra direct pair requested: BTC/USDC, shown separately with a live price feed below
+$live_pairs = ['BTCUSDC' => 'BTC/USDC', 'BTCUSDT' => 'BTC/USDT'];
 
 include 'sidebar.php';
 ?>
@@ -146,9 +148,62 @@ include 'sidebar.php';
                 <?php endforeach; ?>
             </div>
         </div>
+
+        <!-- Live market pairs: real price feed from Binance's free public stream -->
+        <div class="glass-panel rounded-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-900 bg-slate-950/10 flex items-center justify-between">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Market Pairs</h3>
+                <div class="flex items-center gap-1.5">
+                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <span class="text-[9px] font-mono text-emerald-400">LIVE</span>
+                </div>
+            </div>
+            <div class="divide-y divide-slate-900">
+                <?php foreach ($live_pairs as $stream => $label): ?>
+                <div class="p-4 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-300"><?= $label ?></span>
+                    <div class="text-right">
+                        <span id="live-price-<?= strtolower($stream) ?>" class="text-xs font-mono font-bold text-slate-200 block">Loading...</span>
+                        <span id="live-change-<?= strtolower($stream) ?>" class="text-[10px] font-mono text-slate-500">0.00%</span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 
 </div>
+
+<script>
+    // Live BTC/USDC and BTC/USDT prices via Binance's free public WebSocket
+    // (same approach already used in prices.php)
+    const liveStreams = <?= json_encode(array_keys($live_pairs)) ?>.map(s => s.toLowerCase());
+    const liveSocketUrl = `wss://stream.binance.com:9443/stream?streams=${liveStreams.map(s => s + '@ticker').join('/')}`;
+    const liveSocket = new WebSocket(liveSocketUrl);
+
+    liveSocket.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        const stream = msg.stream.split('@')[0]; // e.g. "btcusdc"
+        const data = msg.data;
+
+        const priceNode = document.getElementById(`live-price-${stream}`);
+        const changeNode = document.getElementById(`live-change-${stream}`);
+        if (!priceNode || !data) return;
+
+        const price = parseFloat(data.c);
+        const changePercent = parseFloat(data.P);
+
+        priceNode.innerText = `$${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+        if (changePercent >= 0) {
+            changeNode.innerText = `+${changePercent.toFixed(2)}%`;
+            changeNode.className = "text-[10px] font-mono text-emerald-400 font-bold block";
+        } else {
+            changeNode.innerText = `${changePercent.toFixed(2)}%`;
+            changeNode.className = "text-[10px] font-mono text-rose-400 font-bold block";
+        }
+    };
+</script>
 
 <script>
     function switchView(view) {
