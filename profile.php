@@ -28,6 +28,13 @@ include 'sidebar.php';
         <p class="text-xs text-slate-400 mt-1">Configure user parameter thresholds, primary regional fiat currency matrices, and cloud identifiers.</p>
     </div>
 
+    <!-- Receiver Account Number - share this to receive money from anyone, any country -->
+    <div class="glass-panel p-6 rounded-2xl border-cyan-500/20 bg-cyan-500/5 text-center space-y-2">
+        <span class="text-[10px] font-mono text-cyan-400 uppercase tracking-widest block">Your Ari-Pay Account Number</span>
+        <div class="text-2xl font-bold font-mono text-white select-all"><?= htmlspecialchars($account_data['account_number'] ?? 'Not assigned') ?></div>
+        <p class="text-[10px] text-slate-500">Share this number with anyone, in any country, so they can send you money directly.</p>
+    </div>
+
     <?= $status_msg ?>
 
     <div class="glass-panel p-6 rounded-2xl space-y-4">
