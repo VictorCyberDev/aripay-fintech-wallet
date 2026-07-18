@@ -44,10 +44,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 throw new Exception("Account credentials already provisioned inside the system.", 409);
             }
 
+            // Generate a unique Ari-Pay account number (receiver ID) - used by
+            // anyone, from any country, to send this user money.
+            // Format: AP + 10 random digits, checked against collisions.
+            do {
+                $account_number = "AP" . str_pad(random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                $check_acc = $conn->prepare("SELECT id FROM users WHERE account_number = ? LIMIT 1");
+                $check_acc->execute([$account_number]);
+            } while ($check_acc->fetch());
+
             // Provision User Account Node
-            $stmt = $conn->prepare("INSERT INTO users (fullname, email, phone, password, base_currency) VALUES (?, ?, ?, ?, ?)");
-            // FIXED: Removed the accidental trailing comma here
-            $stmt->execute([$fullname, $email, $phone, $password, $base_currency]);
+            $stmt = $conn->prepare("INSERT INTO users (fullname, email, phone, password, base_currency, account_number) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$fullname, $email, $phone, $password, $base_currency, $account_number]);
             $user_id = $conn->lastInsertId();
 
             // Generate Cryptographically Secure Pseudo-Random Blockchain Addresses
