@@ -1,4 +1,5 @@
 <?php
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -82,9 +83,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             
             if ($e->getCode() === 409) {
+                // Business-rule conflict: safe to show to the user.
                 $error = $e->getMessage();
             } else {
-                $error = "System infrastructure conflict: " . $e->getMessage();
+                log_app_error('Account registration failed', $e);
+                $error = "We could not create your account right now. Please try again shortly.";
             }
         }
     }

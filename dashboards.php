@@ -1,4 +1,5 @@
 <?php
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -87,8 +88,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['send_payment'])) {
                     $conn->commit();
                     $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Transfer settled. Tx Hash: " . substr($tx_hash, 0, 16) . "...</span></div>";
                 } catch (Exception $e) {
-                    $conn->rollBack();
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='x-circle' class='w-4 h-4 shrink-0'></i><span>Engine fault: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                    if ($conn->inTransaction()) { $conn->rollBack(); }
+                    log_app_error('Dashboard transfer failed', $e);
+                    $msg = user_error_notice('Transfer could not be completed. No funds were moved.');
                 }
             } else {
                 $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='wallet' class='w-4 h-4 shrink-0'></i><span>Transaction aborted: Insufficient asset balance reserves.</span></div>";

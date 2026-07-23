@@ -1,5 +1,5 @@
 <?php
-ini_set('display_errors', 0);
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }

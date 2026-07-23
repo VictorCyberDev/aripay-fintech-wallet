@@ -1,4 +1,5 @@
 <?php
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
@@ -8,10 +9,14 @@ $status_msg = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
     $new_currency = $_POST['base_currency'];
-    $stmt = $conn->prepare("UPDATE users SET base_currency = ? WHERE id = ?");
-    if($stmt->execute([$new_currency, $user_id])) {
+    try {
+        $stmt = $conn->prepare("UPDATE users SET base_currency = ? WHERE id = ?");
+        $stmt->execute([$new_currency, $user_id]);
         $_SESSION['base_currency'] = $new_currency;
         $status_msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'>Profile adjustments written successfully to remote cloud nodes.</div>";
+    } catch (Exception $e) {
+        log_app_error('Profile update failed', $e);
+        $status_msg = user_error_notice('Could not update your profile. Please try again.');
     }
 }
 

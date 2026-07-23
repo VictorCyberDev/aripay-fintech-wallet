@@ -1,5 +1,5 @@
 <?php
-ini_set('display_errors', 0);
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
@@ -42,10 +42,16 @@ $msg = "";
 if (isset($_GET['lookup_acc'])) {
     header('Content-Type: application/json');
     $acc = trim($_GET['lookup_acc']);
-    $stmt = $conn->prepare("SELECT acc_name FROM mock_bank_accounts WHERE acc_no = ? LIMIT 1");
-    $stmt->execute([$acc]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    echo json_encode(['found' => (bool)$result, 'name' => $result['acc_name'] ?? null]);
+    try {
+        $stmt = $conn->prepare("SELECT acc_name FROM mock_bank_accounts WHERE acc_no = ? LIMIT 1");
+        $stmt->execute([$acc]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        echo json_encode(['found' => (bool)$result, 'name' => $result['acc_name'] ?? null]);
+    } catch (Exception $e) {
+        log_app_error('Bank account lookup failed', $e);
+        http_response_code(500);
+        echo json_encode(['found' => false, 'name' => null, 'error' => 'Lookup unavailable']);
+    }
     exit();
 }
 
@@ -62,9 +68,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_cheque'])) {
     if ($amount <= 0 || empty($owner_acc) || empty($receiver_acc)) {
         $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='alert-circle' class='w-4 h-4 shrink-0'></i><span>Please fill all required fields correctly.</span></div>";
     } else {
-        $stmt = $conn->prepare("INSERT INTO physical_cheques (submitted_by, cheque_type, bank_name, cheque_owner_acc_no, receiver_acc_no, receiver_name, amount, wallet_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$user_id, $cheque_type, $bank_name, $owner_acc, $receiver_acc, $receiver_name, $amount, $mode]);
-        $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Cheque submitted for processing. Status: Pending review.</span></div>";
+        try {
+            $stmt = $conn->prepare("INSERT INTO physical_cheques (submitted_by, cheque_type, bank_name, cheque_owner_acc_no, receiver_acc_no, receiver_name, amount, wallet_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$user_id, $cheque_type, $bank_name, $owner_acc, $receiver_acc, $receiver_name, $amount, $mode]);
+            $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>Cheque submitted for processing. Status: Pending review.</span></div>";
+        } catch (Exception $e) {
+            log_app_error('Physical cheque submission failed', $e);
+            $msg = user_error_notice('Could not submit the cheque. Please try again.');
+        }
     }
 }
 

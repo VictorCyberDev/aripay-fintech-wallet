@@ -1,5 +1,5 @@
 <?php
-ini_set('display_errors', 0);
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
@@ -59,8 +59,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['generate_cheque'])) {
                 $new_cheque = ['serial' => $serial, 'amount' => $amount, 'currency' => $currency];
                 $msg = "<div class='notification-card border-emerald-500/30 bg-emerald-500/10 text-emerald-400'><i data-lucide='check-circle' class='w-4 h-4 shrink-0'></i><span>E-cheque generated successfully.</span></div>";
             } catch (Exception $e) {
-                $conn->rollBack();
-                $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Error: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                if ($conn->inTransaction()) { $conn->rollBack(); }
+                log_app_error('E-cheque generation failed', $e);
+                $msg = user_error_notice('Could not issue the e-cheque. Please try again.');
             }
         }
     }

@@ -2,7 +2,7 @@
 // ==========================================
 // SECURITY & DATA METRIC ROUTER
 // ==========================================
-ini_set('display_errors', 0); // Production secure fallback
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
@@ -112,7 +112,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['commit_spot_order'])) 
                     }
                 } catch (Exception $e) {
                     if ($conn->inTransaction()) { $conn->rollBack(); }
-                    $msg = "<div class='notification-card border-rose-500/30 bg-rose-500/10 text-rose-400'><i data-lucide='shield-alert' class='w-4 h-4 shrink-0'></i><span>Core Ledger Engine Exception: " . htmlspecialchars($e->getMessage()) . "</span></div>";
+                    log_app_error('Spot trade execution failed', $e);
+                    $msg = user_error_notice('Order could not be executed. No balances were changed.');
                 }
             }
         }

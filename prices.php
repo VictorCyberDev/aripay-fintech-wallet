@@ -2,7 +2,7 @@
 // ==========================================
 // SYSTEM SECURITY & TERMINAL INITIALIZATION
 // ==========================================
-ini_set('display_errors', 0);
+require 'bootstrap.php';
 require 'db.php';
 session_start();
 
